@@ -1,0 +1,23 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+pydantic
+pydantic-settings
+httpx
+python-multipart
+Pillow
+numpy
+scipy
+opencv-python-headless
+pydub
+python-jose[cryptography]
+passlib[bcrypt]
+python-dateutil
+loguru
+psycopg2-binary
+gunicorn
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+transformers

@@ -1,0 +1,86 @@
+TruthLens - Development & Architecture Documentation
+
+======================================================================
+1. Development Environment Setup
+======================================================================
+Frontend Setup (Vite / React / TypeScript / Extension)
+- Node.js 20.15+ (v20.19+ or v22+ recommended for latest Vite)
+- Package Manager: npm
+- TypeScript: v5+
+- Build Tool: Vite v8+ with `@vitejs/plugin-react` and custom build scripts for the content script/service worker.
+- Commands: 
+  - `npm install` (Install dependencies)
+  - `npm run dev` (Start local development server)
+  - `npm run build` (Builds Vite app and triggers `build-content.mjs` for the extension scripts)
+
+Backend Setup (FastAPI / Python)
+- Python 3.10+
+- Key Dependencies:
+  - `fastapi`, `uvicorn` (Web server and API framework)
+  - `transformers`, `torch` (Local AI Inference)
+  - `Pillow`, `opencv-python` (Image processing)
+  - `numpy`, `scipy` (Signal and spectral processing)
+- Commands:
+  - `pip install -r requirements.txt`
+  - `uvicorn main:app --reload` (Starts backend API on localhost:8000)
+
+======================================================================
+2. Project Structure
+======================================================================
+TruthLens/
+├── backend/                       # Python FastAPI Backend
+│   ├── ai_services/               # Forensic and ML detection modules
+│   │   ├── ai_model_loader.py     # Local Transformers pipeline (Organika/sdxl-detector)
+│   │   ├── image_detector.py      # ELA, Color Stats, Noise & Edge heuristics
+│   │   ├── video_detector.py      # Temporal and frame-consistency analysis
+│   │   └── audio_detector.py      # Spectral acoustic analysis
+│   ├── api/                       # API Route Controllers
+│   │   └── detection.py           # Orchestrates scans and threshold logic
+│   └── main.py                    # FastAPI application entry point
+├── public/
+│   ├── manifest.json              # Chrome Extension Manifest V3
+│   └── icons/
+├── src/                           # Frontend React / TypeScript App
+│   ├── background/                # Extension Service Worker
+│   │   └── service-worker.ts      # Context menus, message routing, history cleanup
+│   ├── content/                   # Content Scripts (Injected into pages)
+│   │   └── content.ts             # DOM observer, UI injection (badges)
+│   ├── detection/                 # Frontend Heuristics Engine
+│   │   └── detection-engine.ts    # Canvas capture, fast heuristics, API failover
+│   ├── popup/                     # Extension Popup UI (React)
+│   ├── dashboard/                 # Full Dashboard UI (React)
+│   └── shared/                    # Types and Constants
+└── scripts/                       # Build scripts
+    └── build-content.mjs          # Custom esbuild config for content-script.js
+
+======================================================================
+3. Key Implementation Details
+======================================================================
+
+A. Manifest File Configuration (manifest.json)
+- Architecture: Chrome Manifest V3
+- Permissions: 
+  - `activeTab`: To scan media on the currently visible page.
+  - `storage`: For persisting scan history, settings, and domain reputations.
+  - `contextMenus`: Adds "Scan with TruthLens" to the right-click menu.
+  - `alarms`: Runs a monthly cleanup job (`truthlens-monthly-cleanup`) to purge old history entries.
+- Host Permissions: `<all_urls>` to allow the content script to run everywhere and capture cross-origin media via canvas.
+- Background: Registered as a module service worker (`service-worker.js`).
+
+B. Media Detection and Capture
+- DOM Observation: The content script uses a `MutationObserver` to watch for newly added `<img>`, `<video>`, and `<audio>` elements as the user scrolls.
+- CORS Evasion & Capture: To avoid CORS restrictions when the backend attempts to fetch media, the extension draws the media onto an offscreen `<canvas>`. It then extracts the pixel data via `canvas.toDataURL()` and sends it to the backend as a `base64_data` string.
+- Local Heuristics: Before hitting the API (or if the API fails), the frontend runs a fast heuristic pass. It uses a weighted average of metadata signals (file extension, blob URLs, data URIs) and canvas pixel statistics (noise variation, edge density, color richness).
+
+C. ML Model Integration
+- Self-Hosted Inference: The backend does NOT rely on external APIs (which are vulnerable to rate limits and DNS blocks). It runs inference locally using PyTorch and the Hugging Face `transformers` library.
+- Target Model: `Organika/sdxl-detector` (a Vision Transformer trained on modern Diffusion artifacts).
+- Lazy Loading & Threading: The ~340MB model is downloaded to the local HF cache and loaded into memory on the first API request. Inference is wrapped in `asyncio.to_thread` to prevent blocking the asynchronous FastAPI event loop.
+- Ensemble Scoring: The ML score is blended with forensic heuristics (ELA, JPEG Ghosting, Edge Coherence). To prevent "score dilution" (where strong manipulation signals are drowned out by normal background signals), any single signal >= 0.60 completely overrides the average, ensuring obvious deepfakes are correctly classified.
+
+D. Storage and History Management
+- Storage Layer: Uses `chrome.storage.local`.
+- Data Lifecycle: Scan results are wrapped in a `DetectionEntry` containing the metadata, a timestamp, and an expiration date (~30 days).
+- Background Routing: The `service-worker.ts` acts as a message router. When the content script completes a scan, it sends a `SCAN_RESULT` message to the background worker.
+- Persistence: The worker unshifts the new result into the history array and trims the list to a maximum of 500 entries to prevent quota limits.
+- Expiration: An alarm runs daily to filter out entries whose `expiresAt` timestamp has passed, keeping the local storage lightweight.

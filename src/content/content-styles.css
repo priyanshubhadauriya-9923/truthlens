@@ -1,0 +1,10 @@
+/* TruthLens Content Script Styles — injected via JS */
+
+@keyframes tl-pulse {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes tl-spin {
+  to { transform: rotate(360deg); }
+}
