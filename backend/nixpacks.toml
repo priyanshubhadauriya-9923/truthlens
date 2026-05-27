@@ -1,4 +1,4 @@
 # Railway nixpacks build configuration for TruthLens Backend
 
 [start]
-cmd = "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2 --log-level info"
+cmd = "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level info"
